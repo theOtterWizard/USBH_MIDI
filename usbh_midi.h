@@ -27,10 +27,11 @@
 #if !defined(_USBH_MIDI_H_)
 #define _USBH_MIDI_H_
 //#define DEBUG_USB_HOST
+#include "USBH_MIDI_Namespace.h"
 #include "Usb.h"
 #include <MIDI.h>
+#include <string.h>
 
-#include "USBH_MIDI_Namespace.h"
 
 #define MIDI_MAX_ENDPOINTS 5 //endpoint 0, bulk_IN(MIDI), bulk_OUT(MIDI), bulk_IN(VSP), bulk_OUT(VSP)
 #define USB_SUBCLASS_MIDISTREAMING 3
@@ -93,23 +94,25 @@ public:
         virtual uint8_t GetAddress() { return bAddress; };
 };
 
-BEGIN_USBH_MIDI_NAMESPACE
+BEGIN_USBHMIDI_NAMESPACE
 
-class usbHostMidiTransport : protected USBH_MIDI
+class usbHostMidiTransport
 {
 private:
+	USBH_MIDI *pMid;
+
 	byte mTxBuffer[MIDI_MAX_SYSEX_SIZE];
 	size_t mTxIndex;
-	MidiType mTxStatus;
+	midi::MidiType mTxStatus;
 
-	byte mRxBuffer[MIDI_MAX_SYSEX_SIZE];
+	byte mRxBuffer[MIDI_EVENT_PACKET_SIZE];
 	size_t mRxLength;
 	size_t mRxIndex;
 
 	uint8_t cableNumber;
 
 public:
-	usbHostMidiTransport(uint8_t cableNumber = 0) { this->cableNumber = cableNumber };
+	usbHostMidiTransport(USBH_MIDI *p, uint8_t cableNumber = 0) {this->pMid = p; this->cableNumber = cableNumber; };
 
 	static const bool thruActivated = false;
 
@@ -119,13 +122,13 @@ public:
 		mRxLength = 0;
 	};
 
-	bool beginTransmission(MidiType status) {
+	bool beginTransmission(midi::MidiType status) {
 		mTxStatus = status;
 		
-		if (status < SystemExclusive) {
+		if (status < 0xF0) {
 			// Non System messages
 		}
-		mTxBuffer[0] = 0;
+		memset(mTxBuffer, 0, sizeof(mTxBuffer));
 		mTxIndex = 0;
 
 		return true;
@@ -137,23 +140,26 @@ public:
 		}
 	};
 
-	void endTransmission() { SendData(mTxBuffer, cableNumber) };
+	void endTransmission() { pMid->SendData((uint8_t*)mTxBuffer,  cableNumber); };
 
 	byte read() {
+		auto byte = mRxBuffer[mRxIndex++];
 		mRxLength--;
-		return mRxBuffer[mRxIndex++];
+		return byte;
 	};
 
-	unsigned available() {
+	int available() {
 		if(mRxLength != 0) {
 			return mRxLength;
 		} else {
-			mRxLength = RecvRawData(mRxBuffer);
+			mRxLength = pMid->RecvRawData(mRxBuffer) ;
+			mRxIndex = 1;
+
 			return mRxLength;
 		}
 	};
 };
 
-END_USBH_MIDI_NAMESPACE
+END_USBHMIDI_NAMESPACE
 
 #endif //_USBH_MIDI_H_
