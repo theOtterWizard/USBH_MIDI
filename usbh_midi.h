@@ -28,6 +28,9 @@
 #define _USBH_MIDI_H_
 //#define DEBUG_USB_HOST
 #include "Usb.h"
+#include <MIDI.h>
+
+#include "USBH_MIDI_Namespace.h"
 
 #define MIDI_MAX_ENDPOINTS 5 //endpoint 0, bulk_IN(MIDI), bulk_OUT(MIDI), bulk_IN(VSP), bulk_OUT(VSP)
 #define USB_SUBCLASS_MIDISTREAMING 3
@@ -89,4 +92,68 @@ public:
         virtual uint8_t Release();
         virtual uint8_t GetAddress() { return bAddress; };
 };
+
+BEGIN_USBH_MIDI_NAMESPACE
+
+class usbHostMidiTransport : protected USBH_MIDI
+{
+private:
+	byte mTxBuffer[MIDI_MAX_SYSEX_SIZE];
+	size_t mTxIndex;
+	MidiType mTxStatus;
+
+	byte mRxBuffer[MIDI_MAX_SYSEX_SIZE];
+	size_t mRxLength;
+	size_t mRxIndex;
+
+	uint8_t cableNumber;
+
+public:
+	usbHostMidiTransport(uint8_t cableNumber = 0) { this->cableNumber = cableNumber };
+
+	static const bool thruActivated = false;
+
+	void begin() {
+		mTxIndex = 0;
+		mRxIndex = 0;
+		mRxLength = 0;
+	};
+
+	bool beginTransmission(MidiType status) {
+		mTxStatus = status;
+		
+		if (status < SystemExclusive) {
+			// Non System messages
+		}
+		mTxBuffer[0] = 0;
+		mTxIndex = 0;
+
+		return true;
+	};
+
+	void write(byte b) {
+		if (mTxIndex < MIDI_MAX_SYSEX_SIZE) {
+			mTxBuffer[mTxIndex++] = b;
+		}
+	};
+
+	void endTransmission() { SendData(mTxBuffer, cableNumber) };
+
+	byte read() {
+		mRxLength--;
+		return mRxBuffer[mRxIndex++];
+	};
+
+	unsigned available() {
+		if(mRxLength != 0) {
+			return mRxLength;
+		} else {
+			mRxLength = RecvRawData(mRxBuffer);
+			return mRxLength;
+		}
+	};
+};
+
+END_USBH_MIDI_NAMESPACE
+
 #endif //_USBH_MIDI_H_
